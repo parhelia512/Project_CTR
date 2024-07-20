@@ -8,6 +8,10 @@
 
 static const u32 DEFAULT_STACK_SIZE = 0x4000; // 10KB
 
+static const u32 BARE_METAL_TEXT_SEGEMENT_ID = 0;
+static const u32 BARE_METAL_RO_SEGEMENT_ID = 1;
+static const u32 BARE_METAL_RW_SEGEMENT_ID = 2;
+
 typedef struct code_segment
 {
 	u32 address;
@@ -122,7 +126,7 @@ int ImportPlainRegionFromElf(elf_context *elf, ncch_settings *set)
 	return 0;
 }
 
-void CreateCodeSegmentFromElf(code_segment *out, elf_context *elf, u64 segment_flags, u32 pageSize, bool baremetal, u32 baremetalOrder)
+void CreateCodeSegmentFromElf(code_segment *out, elf_context *elf, u64 segment_flags, u32 page_size, bool baremetal, u32 baremetal_segment_id)
 {
 	u32 segmentNum = elf_SegmentNum(elf);
 	const elf_segment *segments = elf_GetSegments(elf);
@@ -145,8 +149,8 @@ void CreateCodeSegmentFromElf(code_segment *out, elf_context *elf, u64 segment_f
 			but that's a lot more work compared to this dirty workaround.
 
 			First segment defines entrypoint and LMA for the rest of the image.*/
-		if (baremetalOrder < segmentNum && (segments[baremetalOrder].flags & segment_flags) == segment_flags && segments[baremetalOrder].type == PT_LOAD)
-			foundSegmentId = baremetalOrder;
+		if (baremetal_segment_id < segmentNum && (segments[baremetal_segment_id].flags & segment_flags) == segment_flags && segments[baremetal_segment_id].type == PT_LOAD)
+			foundSegmentId = baremetal_segment_id;
 	} else {
 		/* Find segment */
 		for (u16 i = 0; i < segmentNum; i++) {
@@ -168,7 +172,7 @@ void CreateCodeSegmentFromElf(code_segment *out, elf_context *elf, u64 segment_f
 		out->address = segments[foundSegmentId].vAddr;
 		out->memSize = segments[foundSegmentId].memSize;
 		out->fileSize = segments[foundSegmentId].fileSize;
-		out->pageNum = SizeToPage(out->fileSize, pageSize);
+		out->pageNum = SizeToPage(out->fileSize, page_size);
 		out->data = segments[foundSegmentId].ptr;
 	}
 }
@@ -182,9 +186,9 @@ int CreateExeFsCode(elf_context *elf, ncch_settings *set)
 
 	bool baremetal = set->options.baremetal;
 	u32 pageSize = set->options.pageSize;
-	CreateCodeSegmentFromElf(&text, elf, PF_TEXT, pageSize, baremetal, 0);
-	CreateCodeSegmentFromElf(&rodata, elf, PF_RODATA, pageSize, baremetal, 1);
-	CreateCodeSegmentFromElf(&rwdata, elf, PF_DATA, pageSize, baremetal, 2);
+	CreateCodeSegmentFromElf(&text, elf, PF_TEXT, pageSize, baremetal, BARE_METAL_TEXT_SEGEMENT_ID);
+	CreateCodeSegmentFromElf(&rodata, elf, PF_RODATA, pageSize, baremetal, BARE_METAL_RO_SEGEMENT_ID);
+	CreateCodeSegmentFromElf(&rwdata, elf, PF_DATA, pageSize, baremetal, BARE_METAL_RW_SEGEMENT_ID);
 
 	/* Checking the existence of essential ELF Segments */
 	if (!text.fileSize) return NOT_FIND_TEXT_SEGMENT;
