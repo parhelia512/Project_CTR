@@ -10,6 +10,7 @@ typedef struct
 	struct
 	{
 		u32 blockSize;
+		u32 pageSize;
 		bool verbose;
 		bool IncludeExeFsLogo;
 		bool CompressCode;
@@ -20,7 +21,8 @@ typedef struct
 		bool IsBuildingCodeSection;
 		bool UseRomFS;
 		bool noCodePadding;
-		
+		bool baremetal;
+
 		bool useSecCrypto;
 		u8 keyXID;
 	} options;
