@@ -24,7 +24,7 @@ int GetSettingsFromUsrset(cia_settings *ciaset, user_settings *usrset);
 int GetSettingsFromNcch0(cia_settings *ciaset, u32 ncch0_offset);
 int GetTmdDataFromNcch(cia_settings *ciaset, u8 *ncch, ncch_info *ncch_ctx, u8 *key);
 int GetMetaRegion(cia_settings *ciaset, u8 *ncch, ncch_info *ncch_ctx, u8 *key);
-int GetContentFilePtrs(cia_settings *ciaset, user_settings *usrset);
+int ProcessContentFiles(cia_settings *ciaset, user_settings *usrset);
 int ImportNcchContent(cia_settings *ciaset, user_settings *usrset);
 int GetSettingsFromSrl(cia_settings *ciaset);
 int GetSettingsFromCci(cia_settings *ciaset);
@@ -114,12 +114,6 @@ finish:
 
 void FreeCiaSettings(cia_settings *set)
 {
-	if(set->content.filePtrs){
-		for(u32 i = 1; i < set->content.count; i++){
-			fclose(set->content.filePtrs[i]);
-		}
-		free(set->content.filePtrs);
-	}
 	free(set->ciaSections.certChain.buffer);
 	free(set->ciaSections.tik.buffer);
 	free(set->ciaSections.tmd.buffer);
@@ -141,7 +135,7 @@ int GetCiaSettings(cia_settings *ciaset, user_settings *usrset)
 	if(usrset->common.workingFileType == infile_ncch){
 		if((result = GetSettingsFromNcch0(ciaset,0)) != 0) 
 			return result;
-		if((result = GetContentFilePtrs(ciaset,usrset)) != 0) 
+		if((result = ProcessContentFiles(ciaset,usrset)) != 0) 
 			return result;
 		if((result = ImportNcchContent(ciaset,usrset)) != 0) 
 			return result;
@@ -400,14 +394,11 @@ cleanup:
 	return 0;
 }
 
-int GetContentFilePtrs(cia_settings *ciaset, user_settings *usrset)
+int ProcessContentFiles(cia_settings *ciaset, user_settings *usrset)
 {
-	ciaset->content.filePtrs = malloc(sizeof(FILE*)*CIA_MAX_CONTENT);
-	if(!ciaset->content.filePtrs){
-		fprintf(stderr,"[CIA ERROR] Not enough memory\n"); 
-		return MEM_ERROR; 
-	}
-	memset(ciaset->content.filePtrs,0,sizeof(FILE*)*CIA_MAX_CONTENT);
+	FILE* tmpFilePtr = NULL;
+
+	// process content files 
 	int j = 1;
 	ncch_hdr *hdr = malloc(sizeof(ncch_hdr));
 	for(int i = 1; i < CIA_MAX_CONTENT; i++){
@@ -416,32 +407,43 @@ int GetContentFilePtrs(cia_settings *ciaset, user_settings *usrset)
 				fprintf(stderr,"[CIA ERROR] Failed to open \"%s\"\n",usrset->common.contentPath[i]); 
 				return FAILED_TO_OPEN_FILE; 
 			}
-			ciaset->content.fileSize[j] = GetFileSize64(usrset->common.contentPath[i]);
-			ciaset->content.filePtrs[j] = fopen(usrset->common.contentPath[i],"rb");
 
+			// get content file size
+			ciaset->content.fileSize[j] = GetFileSize64(usrset->common.contentPath[i]);
+			
+			// get content id
 			if(usrset->cia.contentId[i] > MAX_U32)
 				ciaset->content.id[j] = u32GetRand(); 
 			else 
 				ciaset->content.id[j] = (u32)usrset->cia.contentId[i];
 
+			// get content index
 			ciaset->content.index[j] = (u16)i;
 
-			// Get Data from ncch HDR
-			ReadNcchHdr(hdr,ciaset->content.filePtrs[j]);
+			// Get Data from NCCH HDR
+			tmpFilePtr = fopen(usrset->common.contentPath[i],"rb");
+			if(!tmpFilePtr){
+				fprintf(stderr,"[CIA ERROR] Failed to open \"%s\"\n",usrset->common.contentPath[i]); 
+				return FAILED_TO_OPEN_FILE; 
+			}
+			ReadNcchHdr(hdr,tmpFilePtr);
+			fclose(tmpFilePtr);
+			tmpFilePtr = NULL;
 
-			// Get Size
+			// Get Size from NCCH HDR
 			u64 calcSize = GetNcchSize(hdr);
 			if(calcSize != ciaset->content.fileSize[j]){
 				fprintf(stderr,"[CIA ERROR] \"%s\" is corrupt\n",usrset->common.contentPath[i]); 
 				return FAILED_TO_OPEN_FILE; 
 			}
 
+			// calculate content size & offset in CIA
 			ciaset->content.size[j] = align(calcSize,CIA_CONTENT_ALIGN);
 			ciaset->content.offset[j] = ciaset->content.totalSize;
 
+			// update CIA total content size
 			ciaset->content.totalSize += ciaset->content.size[j];
-
-			fclose(ciaset->content.filePtrs[j]);
+			
 			// Finish get next content
 			j++;
 		}
@@ -463,6 +465,8 @@ int GetContentFilePtrs(cia_settings *ciaset, user_settings *usrset)
 
 int ImportNcchContent(cia_settings *ciaset, user_settings *usrset)
 {
+	FILE* tmpFilePtr = NULL;
+	
 	ciaset->ciaSections.content.buffer = realloc(ciaset->ciaSections.content.buffer,ciaset->content.totalSize);
 	if(!ciaset->ciaSections.content.buffer){
 		fprintf(stderr,"[CIA ERROR] Not enough memory\n");
@@ -471,10 +475,15 @@ int ImportNcchContent(cia_settings *ciaset, user_settings *usrset)
 
 	ncch_hdr *ncch0hdr = (ncch_hdr*)ciaset->ciaSections.content.buffer;
 	for(int i = 1; i < ciaset->content.count; i++){
-		// Import
+		// Import NCCH into memory
 		u8 *ncchpos = (u8*)(ciaset->ciaSections.content.buffer+ciaset->content.offset[i]);
-		ciaset->content.filePtrs[i] = fopen(usrset->common.contentPath[i], "rb");
-		ReadFile64(ncchpos, ciaset->content.fileSize[i], 0, ciaset->content.filePtrs[i]);
+		
+		// open/read/close file
+		tmpFilePtr = fopen(usrset->common.contentPath[i], "rb");
+		ReadFile64(ncchpos, ciaset->content.fileSize[i], 0, tmpFilePtr);
+		fclose(tmpFilePtr);
+		
+		// Edit NCCH ID if required
 		if(ModifyNcchIds(ncchpos, NULL, ncch0hdr->programId, ciaset->keys) != 0)
 			return -1;
 
@@ -482,7 +491,8 @@ int ImportNcchContent(cia_settings *ciaset, user_settings *usrset)
 		if(ciaset->content.IsDlc)
 			ciaset->content.flags[i] |= content_Optional;
 
-		fclose(ciaset->content.filePtrs[i]);
+		//if(unknown condition)
+		//	ciaset->content.flags[i] |= content_Shared;
 	}
 
 	ciaset->ciaSections.content.size = ciaset->content.totalSize;

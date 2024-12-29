@@ -68,7 +68,6 @@ typedef struct
 
 		bool keyFound;
 
-		FILE **filePtrs;
 		u64 fileSize[CIA_MAX_CONTENT];
 
 		/* Misc Records */
