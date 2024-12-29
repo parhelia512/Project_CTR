@@ -973,10 +973,13 @@ int VerifyNcch(u8 *ncch, keys_struct *keys, bool CheckHash, bool SuppressOutput)
 int ModifyNcchIds(u8 *ncch, u8 *titleId, u8 *programId, keys_struct *keys)
 {
 	if(!IsNcch(NULL,ncch))
+	{
+		fprintf(stderr, "[NCCH ERROR] Content not a valid ncch\n");
 		return -1;
-		
+	}
+
 	ncch_hdr *hdr = (ncch_hdr*)ncch;
-	
+
 	bool titleIdMatches = titleId == NULL? true : memcmp(titleId,hdr->titleId,8) == 0;
 	bool programIdMatches = programId == NULL? true : memcmp(programId,hdr->programId,8) == 0;
 
@@ -990,7 +993,7 @@ int ModifyNcchIds(u8 *ncch, u8 *titleId, u8 *programId, keys_struct *keys)
 
 	ncch_info ncchInfo;
 	u8 *romfs = NULL;
-	
+
 	//Decrypting if necessary
 	if(IsNcchEncrypted(hdr)){
 		GetNcchInfo(&ncchInfo,hdr);
@@ -1001,14 +1004,14 @@ int ModifyNcchIds(u8 *ncch, u8 *titleId, u8 *programId, keys_struct *keys)
 		}
 		CryptNcchRegion(romfs,ncchInfo.romfsSize,0,ncchInfo.titleId,keys->aes.ncchKey1,ncch_romfs);
 	}
-	
+
 	// Editing data and resigning
 	if(titleId)
 		memcpy(hdr->titleId,titleId,8);
 	if(programId)
 		memcpy(hdr->programId,programId,8);
 	SignCFA(hdr,keys);
-	
+
 	// Re-encrypting if necessary
 	if(IsNcchEncrypted(hdr)){
 		GetNcchInfo(&ncchInfo,hdr);

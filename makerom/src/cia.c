@@ -25,7 +25,7 @@ int GetSettingsFromNcch0(cia_settings *ciaset, u32 ncch0_offset);
 int GetTmdDataFromNcch(cia_settings *ciaset, u8 *ncch, ncch_info *ncch_ctx, u8 *key);
 int GetMetaRegion(cia_settings *ciaset, u8 *ncch, ncch_info *ncch_ctx, u8 *key);
 int GetContentFilePtrs(cia_settings *ciaset, user_settings *usrset);
-int ImportNcchContent(cia_settings *ciaset);
+int ImportNcchContent(cia_settings *ciaset, user_settings *usrset);
 int GetSettingsFromSrl(cia_settings *ciaset);
 int GetSettingsFromCci(cia_settings *ciaset);
 
@@ -143,7 +143,7 @@ int GetCiaSettings(cia_settings *ciaset, user_settings *usrset)
 			return result;
 		if((result = GetContentFilePtrs(ciaset,usrset)) != 0) 
 			return result;
-		if((result = ImportNcchContent(ciaset)) != 0) 
+		if((result = ImportNcchContent(ciaset,usrset)) != 0) 
 			return result;
 	}
 
@@ -418,7 +418,7 @@ int GetContentFilePtrs(cia_settings *ciaset, user_settings *usrset)
 			}
 			ciaset->content.fileSize[j] = GetFileSize64(usrset->common.contentPath[i]);
 			ciaset->content.filePtrs[j] = fopen(usrset->common.contentPath[i],"rb");
-			
+
 			if(usrset->cia.contentId[i] > MAX_U32)
 				ciaset->content.id[j] = u32GetRand(); 
 			else 
@@ -428,7 +428,7 @@ int GetContentFilePtrs(cia_settings *ciaset, user_settings *usrset)
 
 			// Get Data from ncch HDR
 			ReadNcchHdr(hdr,ciaset->content.filePtrs[j]);
-			
+
 			// Get Size
 			u64 calcSize = GetNcchSize(hdr);
 			if(calcSize != ciaset->content.fileSize[j]){
@@ -438,10 +438,10 @@ int GetContentFilePtrs(cia_settings *ciaset, user_settings *usrset)
 
 			ciaset->content.size[j] = align(calcSize,CIA_CONTENT_ALIGN);
 			ciaset->content.offset[j] = ciaset->content.totalSize;
-			
-			ciaset->content.totalSize += ciaset->content.size[j];
-			
 
+			ciaset->content.totalSize += ciaset->content.size[j];
+
+			fclose(ciaset->content.filePtrs[j]);
 			// Finish get next content
 			j++;
 		}
@@ -461,7 +461,7 @@ int GetContentFilePtrs(cia_settings *ciaset, user_settings *usrset)
 	return 0;
 }
 
-int ImportNcchContent(cia_settings *ciaset)
+int ImportNcchContent(cia_settings *ciaset, user_settings *usrset)
 {
 	ciaset->ciaSections.content.buffer = realloc(ciaset->ciaSections.content.buffer,ciaset->content.totalSize);
 	if(!ciaset->ciaSections.content.buffer){
@@ -473,17 +473,16 @@ int ImportNcchContent(cia_settings *ciaset)
 	for(int i = 1; i < ciaset->content.count; i++){
 		// Import
 		u8 *ncchpos = (u8*)(ciaset->ciaSections.content.buffer+ciaset->content.offset[i]);
-
+		ciaset->content.filePtrs[i] = fopen(usrset->common.contentPath[i], "rb");
 		ReadFile64(ncchpos, ciaset->content.fileSize[i], 0, ciaset->content.filePtrs[i]);
 		if(ModifyNcchIds(ncchpos, NULL, ncch0hdr->programId, ciaset->keys) != 0)
 			return -1;
-		
+
 		// Set Additional Flags
 		if(ciaset->content.IsDlc)
 			ciaset->content.flags[i] |= content_Optional;
 
-		//if(unknown condition)
-		//	ciaset->content.flags[i] |= content_Shared;
+		fclose(ciaset->content.filePtrs[i]);
 	}
 
 	ciaset->ciaSections.content.size = ciaset->content.totalSize;
