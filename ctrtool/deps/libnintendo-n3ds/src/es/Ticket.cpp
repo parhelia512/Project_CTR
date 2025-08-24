@@ -157,6 +157,7 @@ ntd::n3ds::es::TicketDeserialiser::TicketDeserialiser(const std::shared_ptr<tc::
 	}
 
 	// process content index
+	const uint32_t kMax3DSTicketContentIndexOffset = (uint32_t)0xFFFF & ~(uint32_t)0x3FF;
 	for (size_t i = 0; i < tik->v1Head.nSectHdrs.unwrap(); i++)
 	{
 		if (tik->sectHdrs[i].sectionType.unwrap() == (uint32_t)brd::es::ESItemType::CONTENT)
@@ -168,6 +169,13 @@ ntd::n3ds::es::TicketDeserialiser::TicketDeserialiser(const std::shared_ptr<tc::
 			brd::es::ESV1ContentRecord* content_records = (brd::es::ESV1ContentRecord*)(tik_data.data() + sizeof(brd::es::ESTicket) + tik->sectHdrs[i].sectOfst.unwrap());
 			for (size_t j = 0; j < tik->sectHdrs[i].nRecords.unwrap(); j++)
 			{
+				// maximum supported value for 3DS (since content indexes cannot exceed 0xFFFF)
+				if (content_records[j].offset.unwrap() > kMax3DSTicketContentIndexOffset)
+				{
+					fmt::print(stderr, "[{} LOG] Skipping ESV1ContentRecord[{:d}] because offset 0x{:x} was not in legal range (0x{:x} - 0x{:x})\n", mModuleLabel, j, content_records[j].offset.unwrap(), 0x0, kMax3DSTicketContentIndexOffset);
+					continue;
+				}
+
 				tc::bn::bitarray<0x80>* access_mask = (tc::bn::bitarray<0x80>*)content_records[j].accessMask.data();
 				for (size_t bit = 0; bit < access_mask->bit_size(); bit++)
 				{
