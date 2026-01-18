@@ -1,11 +1,12 @@
 #include "lib.h"
+#include "version.h"
 
 // Private Constants
 static const u32 DEFAULT_STACK_SIZE = 0x1000;
 
 // Private Prototypes
-void DisplayHelp(char *app_name);
-void DisplayExtendedHelp(char *app_name);
+void DisplayHelp(char *bin_name);
+void DisplayExtendedHelp(char *bin_name);
 void SetDefaults(user_settings *set);
 int SetArgument(int argc, int i, char *argv[], user_settings *set);
 int CheckArgumentCombination(user_settings *set);
@@ -932,14 +933,14 @@ void PrintNoNeedParam(char *arg)
 
 void DisplayBanner(void)
 {
-	printf("CTR MAKEROM v0.18.5 (C) 3DSGuy 2024\n");
+	printf("%s v%d.%d.%d (C) %s\n", APP_NAME, VER_MAJOR, VER_MINOR, VER_PATCH, AUTHORS);
 	printf("Built: %s %s\n\n", __TIME__, __DATE__);
 }
 
-void DisplayHelp(char *app_name)
+void DisplayHelp(char *bin_name)
 {
 	DisplayBanner();
-	printf("Usage: %s [options... ]\n", app_name);
+	printf("Usage: %s [options... ]\n", bin_name);
 	printf("Option          Parameter           Explanation\n");
 	printf("GLOBAL OPTIONS:\n");
 	printf(" -help                              Display this text\n");
@@ -963,10 +964,10 @@ void DisplayHelp(char *app_name)
 	printf(" -ver           <version>           Title Version\n");
 }
 
-void DisplayExtendedHelp(char *app_name)
+void DisplayExtendedHelp(char *bin_name)
 {
 	DisplayBanner();
-	printf("Usage: %s [options... ]\n", app_name);
+	printf("Usage: %s [options... ]\n", bin_name);
 	printf("Option          Parameter           Explanation\n");
 	printf("GLOBAL OPTIONS:\n");
 	printf(" -help                              Display simple usage help\n");
